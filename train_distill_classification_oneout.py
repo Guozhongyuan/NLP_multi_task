@@ -31,7 +31,7 @@ class GPT2classification(nn.Module):
                 nn.ReLU(),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Linear(256, 2),
+                nn.Linear(256, 1),
             )
 
     def forward(self, x, length):
@@ -62,9 +62,9 @@ def load_tnews_data(data_path, data_type, tokenizer, few_shot=False, seq_length=
         sentence = obj['sentence']
         tokenized_sentence = tokenizer.encode(sentence)[:seq_length-20]
         if obj['label_desc'] == 'news_finance':
-            label = 1
+            label = 1.
         else:
-            label = 0
+            label = 0.
 
         all_labels.append(label)
 
@@ -105,7 +105,7 @@ def train(model, train_dataloader):
         num = num + 4
         token, last_idx, label = (x.to(device) for x in batch)
         output = model(token, last_idx)
-        loss = loss_fcn(output, label)
+        loss = torch.mean(torch.square(output - label))
         # bar.set_description("train loss %s" % str(loss.item()))
         loss.backward()
         if num == 32:
@@ -122,7 +122,7 @@ def eval(model, test_datalodar):
         num = num + 1
         token, last_idx, label = (x.to(device) for x in batch)
         output = model(token, last_idx)
-        loss = loss_fcn(output, label)
+        loss = torch.mean(torch.square(output - label))
         loss_sum = loss_sum + loss.item()
         # bar.set_description("eval loss %s" % str(loss.item()))
     print('eval loss', loss_sum/num)
@@ -160,12 +160,9 @@ model.to(device)
 
 optimizer = transformers.AdamW(model.parameters(), lr=1e-7, eps=1.0e-9)
 
-loss_fcn = nn.CrossEntropyLoss()
-loss_fcn.to(device)
-
 eval(model, test_dataloader)
 for epoch in range(5):
     train(model, train_dataloader)
     eval(model, test_dataloader)
-    torch.save(model.state_dict(), "./data/financial_finetune_" + str(epoch) + ".pth")
+    torch.save(model.state_dict(), "./data/financial_finetune_one_" + str(epoch) + ".pth")
 

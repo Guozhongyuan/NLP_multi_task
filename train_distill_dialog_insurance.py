@@ -140,8 +140,8 @@ if __name__ == '__main__':
     loss_fcn = nn.CrossEntropyLoss()
     loss_fcn.to(device)
 
-    optimizer = transformers.AdamW(model.parameters(), lr=1.5e-4, eps=1.0e-9)  # lr=1.5e-4, eps=1.0e-9
+    optimizer = transformers.AdamW(model.parameters(), lr=1.5e-6, eps=1.0e-9)  # lr=1.5e-4, eps=1.0e-9
 
-    for epoch in range(10):
+    for epoch in range(5):
         train(model, train_dataloader, 32, optimizer, device)
-        torch.save(model.state_dict(), "./data/insurance.pth")  # 只保存模型的参数
+        torch.save(model, "./data/insurance_"+str(epoch)+".pth")  # 只保存模型的参数
