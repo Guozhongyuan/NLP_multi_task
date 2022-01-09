@@ -165,6 +165,46 @@ class GPT2Model(nn.Module):
         return x
 
 
+class GPT2classification(nn.Module):
+    def __init__(self,
+                 vocab_size,
+                 layer_size,
+                 block_size,
+                 embedding_dropout,
+                 embedding_size,
+                 num_attention_heads,
+                 attention_dropout,
+                 residual_dropout,
+                 num_classification):
+        super(GPT2classification, self).__init__()
+        
+        self.GPT2model = GPT2Model(
+                            vocab_size=vocab_size,
+                            layer_size=layer_size,
+                            block_size=block_size,
+                            embedding_dropout=embedding_dropout,
+                            embedding_size=embedding_size,
+                            num_attention_heads=num_attention_heads,
+                            attention_dropout=attention_dropout,
+                            residual_dropout=residual_dropout)
+
+        self.mlp =  nn.Sequential(
+                nn.Linear(30000, 512),  # 256, 512
+                nn.ReLU(),
+                nn.Linear(512, 256),  # 512, 256
+                nn.ReLU(),
+                nn.Linear(256, num_classification),  # 256, n
+            )
+
+    def forward(self, x, length):
+        x = self.GPT2model(x)
+        classify = []
+        for i in range(len(length)):
+            classify.append(x[i, length[i]].view(-1))
+        classify = torch.stack(classify)
+        x = self.mlp(classify)
+        return x
+
 if __name__ == '__main__':
     gpt = GPT2Model(
     vocab_size=30000,
