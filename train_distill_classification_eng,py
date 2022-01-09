@@ -137,9 +137,9 @@ tokenizer = GPT2Tokenizer(
     'GPT2/bpe/chinese_vocab.model',
     max_len=512)
 
-batch_size = 2
+batch_size = 1
 
-train_set = load_tnews_data('../dataset/THUCNews_processed', 'train_financial', tokenizer)
+train_set = load_tnews_data('../dataset/THUCNews_processed', 'train_financial_ag', tokenizer)
 train_sampler = RandomSampler(train_set)
 train_dataloader = torch.utils.data.DataLoader(train_set,
                                                 batch_size = batch_size,
@@ -148,7 +148,7 @@ train_dataloader = torch.utils.data.DataLoader(train_set,
                                                 collate_fn = collect_fcn,
                                                 pin_memory=True)
 
-test_set = load_tnews_data('../dataset/THUCNews_processed', 'test_financial', tokenizer)
+test_set = load_tnews_data('../dataset/THUCNews_processed', 'test_financial_ag', tokenizer)
 test_sampler = RandomSampler(test_set)                                               
 test_dataloader = torch.utils.data.DataLoader(test_set,
                                                 batch_size = batch_size,
@@ -171,5 +171,5 @@ eval(model, test_dataloader)
 for epoch in range(5):
     train(model, train_dataloader)
     eval(model, test_dataloader)
-    torch.save(model, "../models/financial_finetune_" + str(epoch+1) + ".pth")
+    torch.save(model, "../models/financial_finetune_eng_" + str(epoch+1) + ".pth")
 

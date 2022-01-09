@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from GPT2 import GPT2Model, GPT2Tokenizer
 import json
-from data.samplers import RandomSampler
+from GPT2.samplers import RandomSampler
 from torch.utils.data import TensorDataset
 from tqdm import tqdm
 import transformers
@@ -31,24 +31,21 @@ class GPT2classification(nn.Module):
                 nn.ReLU(),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Linear(256, 1),
+                nn.Linear(256, 2),
             )
 
-    def forward(self, x, length):
+    def forward(self, x):
         x = self.GPT2model(x)
-        classify = []
-        for i in range(len(length)):
-            classify.append(x[i, length[i]].view(-1))
-        classify = torch.stack(classify)
-        x = self.mlp(classify)
+        x = x[:,-1]
+        x = self.mlp(x)
         return x
 
 
-def load_tnews_data(data_path, data_type, tokenizer, few_shot=False, seq_length=1024):
+def load_data(data_path, data_type, tokenizer, few_shot=False, seq_length=1024):
 
     filename = os.path.join(data_path, data_type+'.json')
     objs = []
-    with open(filename) as fin:
+    with open(filename, 'r', encoding='utf-8') as fin:
         for line in fin:
             objs.append(json.loads(line.strip()))
 
@@ -61,16 +58,19 @@ def load_tnews_data(data_path, data_type, tokenizer, few_shot=False, seq_length=
     for _, obj in enumerate(tqdm(objs)):
         sentence = obj['sentence']
         tokenized_sentence = tokenizer.encode(sentence)[:seq_length-20]
-        if obj['label_desc'] == 'news_finance':
-            label = 1.
+        
+        if obj['label_desc'] == 'positive':
+            label = 1
         else:
-            label = 0.
-
+            label = 0
+        
         all_labels.append(label)
 
         tokens = tokenized_sentence
         token_length = len(tokens)
-        tokens.extend([pad_id] * (seq_length - token_length))
+        front_pad = [pad_id] * (seq_length - token_length)
+        front_pad.extend(tokens)
+        tokens = front_pad
 
         all_last_idx.append(token_length)
         all_tokens.append(tokens)
@@ -98,14 +98,14 @@ def collect_fcn(batch):
     return batch_tokens, batch_idx, batch_labels
 
 def train(model, train_dataloader):
-    model.train()
+    model.mlp.train()
     bar = tqdm(train_dataloader)
     num = 0
     for batch in bar:
-        num = num + 4
+        num = num + batch_size
         token, last_idx, label = (x.to(device) for x in batch)
-        output = model(token, last_idx)
-        loss = torch.mean(torch.square(output - label))
+        output = model(token)
+        loss = loss_fcn(output, label)
         # bar.set_description("train loss %s" % str(loss.item()))
         loss.backward()
         if num == 32:
@@ -114,55 +114,61 @@ def train(model, train_dataloader):
             num = 0
 
 def eval(model, test_datalodar):
-    model.eval()
+    model.mlp.eval()
     bar = tqdm(test_datalodar)
     num = 0
     loss_sum = 0
     for batch in bar:
-        num = num + 1
+        num = num + batch_size
         token, last_idx, label = (x.to(device) for x in batch)
-        output = model(token, last_idx)
-        loss = torch.mean(torch.square(output - label))
+        output = model(token)
+        loss = loss_fcn(output, label)
         loss_sum = loss_sum + loss.item()
         # bar.set_description("eval loss %s" % str(loss.item()))
     print('eval loss', loss_sum/num)
 
 
-state_dict = torch.load('./data/model_pretrain_distill.pth', map_location='cpu')
+state_dict = torch.load('../models/model_pretrain_distill.pth', map_location='cpu')
 
 tokenizer = GPT2Tokenizer(
     'GPT2/bpe/vocab.json',
     'GPT2/bpe/chinese_vocab.model',
     max_len=512)
 
-train_set = load_tnews_data('../nlpdata/THUCNews_processed', 'train_financial', tokenizer)
+batch_size = 1
+
+train_set = load_data('../dataset/csdn_processed', 'train_fincpm', tokenizer)
 train_sampler = RandomSampler(train_set)
 train_dataloader = torch.utils.data.DataLoader(train_set,
-                                                batch_size = 4,
+                                                batch_size = batch_size,
                                                 sampler=train_sampler,
                                                 num_workers=0,
                                                 collate_fn = collect_fcn,
                                                 pin_memory=True)
 
-test_set = load_tnews_data('../nlpdata/THUCNews_processed', 'test_financial', tokenizer)
+test_set = load_data('../dataset/csdn_processed', 'test_fincpm', tokenizer)
 test_sampler = RandomSampler(test_set)                                               
 test_dataloader = torch.utils.data.DataLoader(test_set,
-                                                batch_size = 4,
+                                                batch_size = batch_size,
                                                 sampler=test_sampler,
                                                 num_workers=0,
                                                 collate_fn = collect_fcn,
                                                 pin_memory=True)
 
 model = GPT2classification()
-
 model.GPT2model.load_state_dict(state_dict)
+model.GPT2model.eval()
 model.to(device)
 
-optimizer = transformers.AdamW(model.parameters(), lr=1e-7, eps=1.0e-9)
+# optimizer = transformers.AdamW(model.mlp.parameters(), lr=1e-4, eps=1.0e-6)
+optimizer = transformers.AdamW(model.parameters(), lr=1e-6, eps=1.0e-8)
+
+loss_fcn = nn.CrossEntropyLoss()
+loss_fcn.to(device)
 
 eval(model, test_dataloader)
-for epoch in range(5):
+for epoch in range(10):
     train(model, train_dataloader)
     eval(model, test_dataloader)
-    torch.save(model.state_dict(), "./data/financial_finetune_one_" + str(epoch) + ".pth")
+    torch.save(model, "../models/financial_sentiment_" + str(epoch+1) + ".pth")
 

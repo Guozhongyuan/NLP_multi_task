@@ -52,7 +52,7 @@ def load_tnews_data(data_path, data_type, tokenizer, few_shot=False, seq_length=
         for line in fin:
             objs.append(json.loads(line.strip()))
 
-    # objs = objs[:len(objs)//50]
+    objs = objs[:len(objs)//50]
     
     pad_id = tokenizer.encoder['<pad>']
 
@@ -100,15 +100,15 @@ def collect_fcn(batch):
     return batch_tokens, batch_idx, batch_labels
 
 def train(model, train_dataloader):
-    model.mlp.train()
+    model.train()
     bar = tqdm(train_dataloader)
     num = 0
     for batch in bar:
-        num = num + batch_size
+        num = num + 4
         token, last_idx, label = (x.to(device) for x in batch)
         output = model(token, last_idx)
         loss = loss_fcn(output, label)
-        # bar.set_description("train loss %s" % str(loss.item()))
+        bar.set_description("train loss %s" % str(loss.item()))
         loss.backward()
         if num == 32:
             optimizer.step()
@@ -116,17 +116,17 @@ def train(model, train_dataloader):
             num = 0
 
 def eval(model, test_datalodar):
-    model.mlp.eval()
+    model.eval()
     bar = tqdm(test_datalodar)
     num = 0
     loss_sum = 0
     for batch in bar:
-        num = num + batch_size
+        num = num + 1
         token, last_idx, label = (x.to(device) for x in batch)
         output = model(token, last_idx)
         loss = loss_fcn(output, label)
         loss_sum = loss_sum + loss.item()
-        # bar.set_description("eval loss %s" % str(loss.item()))
+        bar.set_description("eval loss %s" % str(loss.item()))
     print('eval loss', loss_sum/num)
 
 
@@ -137,12 +137,10 @@ tokenizer = GPT2Tokenizer(
     'GPT2/bpe/chinese_vocab.model',
     max_len=512)
 
-batch_size = 2
-
 train_set = load_tnews_data('../dataset/THUCNews_processed', 'train_financial', tokenizer)
 train_sampler = RandomSampler(train_set)
 train_dataloader = torch.utils.data.DataLoader(train_set,
-                                                batch_size = batch_size,
+                                                batch_size = 4,
                                                 sampler=train_sampler,
                                                 num_workers=0,
                                                 collate_fn = collect_fcn,
@@ -151,18 +149,18 @@ train_dataloader = torch.utils.data.DataLoader(train_set,
 test_set = load_tnews_data('../dataset/THUCNews_processed', 'test_financial', tokenizer)
 test_sampler = RandomSampler(test_set)                                               
 test_dataloader = torch.utils.data.DataLoader(test_set,
-                                                batch_size = batch_size,
+                                                batch_size = 4,
                                                 sampler=test_sampler,
                                                 num_workers=0,
                                                 collate_fn = collect_fcn,
                                                 pin_memory=True)
 
 model = GPT2classification()
+
 model.GPT2model.load_state_dict(state_dict)
-model.GPT2model.eval()
 model.to(device)
 
-optimizer = transformers.AdamW(model.mlp.parameters(), lr=1e-4, eps=1.0e-6)
+optimizer = transformers.AdamW(model.mlp.parameters(), lr=1e-7, eps=1.0e-9)
 
 loss_fcn = nn.CrossEntropyLoss()
 loss_fcn.to(device)
@@ -171,5 +169,5 @@ eval(model, test_dataloader)
 for epoch in range(5):
     train(model, train_dataloader)
     eval(model, test_dataloader)
-    torch.save(model, "../models/financial_finetune_" + str(epoch+1) + ".pth")
+    torch.save(model.state_dict(), "../models/financial_finetune_" + str(epoch) + ".pth")
 

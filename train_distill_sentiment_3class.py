@@ -31,7 +31,7 @@ class GPT2classification(nn.Module):
                 nn.ReLU(),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Linear(256, 2),
+                nn.Linear(256, 3),
             )
 
     def forward(self, x, length):
@@ -63,11 +63,14 @@ def load_tnews_data(data_path, data_type, tokenizer, few_shot=False, seq_length=
     for _, obj in enumerate(tqdm(objs)):
         sentence = obj['sentence']
         tokenized_sentence = tokenizer.encode(sentence)[:seq_length-20]
-        if obj['label_desc'] == 'news_finance':
+        
+        if obj['label_desc'] == 'positive':
+            label = 2
+        elif obj['label_desc'] == 'neutral':
             label = 1
         else:
             label = 0
-
+        
         all_labels.append(label)
 
         tokens = tokenized_sentence
@@ -139,7 +142,7 @@ tokenizer = GPT2Tokenizer(
 
 batch_size = 2
 
-train_set = load_tnews_data('../dataset/THUCNews_processed', 'train_financial', tokenizer)
+train_set = load_tnews_data('../dataset/Finbert_processed', 'train_fincpm', tokenizer)
 train_sampler = RandomSampler(train_set)
 train_dataloader = torch.utils.data.DataLoader(train_set,
                                                 batch_size = batch_size,
@@ -148,7 +151,7 @@ train_dataloader = torch.utils.data.DataLoader(train_set,
                                                 collate_fn = collect_fcn,
                                                 pin_memory=True)
 
-test_set = load_tnews_data('../dataset/THUCNews_processed', 'test_financial', tokenizer)
+test_set = load_tnews_data('../dataset/Finbert_processed', 'test_fincpm', tokenizer)
 test_sampler = RandomSampler(test_set)                                               
 test_dataloader = torch.utils.data.DataLoader(test_set,
                                                 batch_size = batch_size,
@@ -171,5 +174,5 @@ eval(model, test_dataloader)
 for epoch in range(5):
     train(model, train_dataloader)
     eval(model, test_dataloader)
-    torch.save(model, "../models/financial_finetune_" + str(epoch+1) + ".pth")
+    torch.save(model, "../models/financial_sentiment_" + str(epoch+1) + ".pth")
 
