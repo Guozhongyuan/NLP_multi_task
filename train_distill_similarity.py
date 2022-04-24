@@ -11,7 +11,7 @@ import random
 from torch.nn import functional as F
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 device = 'cuda' # cuda or cpu
 
 
@@ -25,7 +25,7 @@ class ContrastiveLoss(torch.nn.Module):
         self.margin = margin
 
     def forward(self, output1, output2, label):
-        euclidean_distance = F.pairwise_distance(output1, output2)
+        euclidean_distance = torch.abs(output1 - output2)
         loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) + (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))     
  
         return loss_contrastive
@@ -114,10 +114,10 @@ def load_data(data_path, tokenizer, seq_length=1024):
         for j in range(i, len(all)):
 
                 if all[i]['indvInduName']==all[j]['indvInduName']:
-                    list_T_pairs.append([i,j,1])
+                    list_T_pairs.append([i,j,0])
 
                 if all[i]['indvInduName']!=all[j]['indvInduName']:
-                    list_F_pairs.append([i,j,0])
+                    list_F_pairs.append([i,j,1])
     
     print('list_T_pairs', len(list_T_pairs))
     print('list_F_pairs', len(list_F_pairs))
@@ -135,9 +135,9 @@ def load_data(data_path, tokenizer, seq_length=1024):
        
         tokens = tokenized_sentence
         token_length = len(tokens)
-        front_pad = [pad_id] * (seq_length - token_length)
-        front_pad.extend(tokens)
-        tokens = front_pad
+
+        pads = [pad_id] * (seq_length - token_length)
+        tokens.extend(pads)
 
         all_last_idx.append(token_length)
         all_tokens.append(tokens)
@@ -202,13 +202,19 @@ def train(epoch, model, dataset):
     num = 0
     for item in tqdm(dataset):
 
-        output_0 = model(item['token_0'].unsqueeze(0), [item['last_idx_0']])
-        output_1 = model(item['token_1'].unsqueeze(0), [item['last_idx_1']])
+        try:
+            output_0 = model(item['token_0'].unsqueeze(0), [item['last_idx_0']])
+            output_1 = model(item['token_1'].unsqueeze(0), [item['last_idx_1']])
 
-        loss = loss_fcn(output_0[0], output_1[0], item['label'])
-        losses.append(loss.item())
+            loss = loss_fcn(output_0[0], output_1[0], item['label'])
+            losses.append(loss.item())
 
-        loss.backward()
+            loss.backward()
+            num = num + 1
+
+        except Exception as err:
+            print(err)
+
         if num == 32:
             optimizer.step()
             optimizer.zero_grad()
